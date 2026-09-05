@@ -3,7 +3,12 @@
     "__comment::idle_polling_interval": "The interval in seconds to check for new messages when the app has no tasks",
     "__comment::tokenizer_file": "The tokenizer file name inside the model directory (loader.model_path)",
     "__comment::loader": "CTranslate2 loader options, see https://opennmt.net/CTranslate2/python/ctranslate2.Translator.html#ctranslate2.Translator.__init__. Use 'model_path' key for local paths or 'model_name' key for models hosted on Hugging Face. Both can't be used at the same time.",
-    "__comment::inference": "CTranslate2 inference options, see the kwargs in https://opennmt.net/CTranslate2/python/ctranslate2.Translator.html#ctranslate2.Translator.translate_batch",
+    "__comment::inference": "CTranslate2 inference options, see the kwargs in https://opennmt.net/CTranslate2/python/ctranslate2.Translator.html#ctranslate2.Translator.translate_batch. Note: max_decoding_length is computed dynamically per-chunk from chunking.max_decoding_multiplier and is not configurable here.",
+    "__comment::chunking": "Options controlling how large inputs are split before translation",
+    "__comment::chunking::chunk_threshold": "Word count above which the input is split into chunks before translation",
+    "__comment::chunking::chunk_size": "Maximum number of words per chunk when splitting large inputs",
+    "__comment::chunking::min_repetition_penalty": "Lower bound for repetition_penalty applied per chunk; overrides inference.repetition_penalty if that value is lower, to suppress runaway output loops on dense scripts such as Devanagari",
+    "__comment::chunking::max_decoding_multiplier": "Output token cap per chunk as a multiple of input token count; increase if output languages expand significantly (e.g. French, Arabic); default 3",
     "__comment::changes_to_the_config": "the program needs to be restarted if you change this file since it is stored in memory on startup",
     "log_level": 20,
     "idle_polling_interval": 5,
@@ -18,8 +23,13 @@
         "max_batch_size": 8192,
         "sampling_temperature": 0.0001,
         "disable_unk": true,
-        "max_decoding_length": 10000,
         "repetition_penalty": 1.3,
         "patience": 1.5
+    },
+    "chunking": {
+        "chunk_threshold": 250,
+        "chunk_size": 80,
+        "min_repetition_penalty": 1.5,
+        "max_decoding_multiplier": 3
     }
 }
