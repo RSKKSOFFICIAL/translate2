@@ -22,6 +22,7 @@ logger = logging.getLogger(os.environ["APP_ID"] + __name__)
 # Languages that do not use spaces between words — join chunks without a space separator
 _NO_SPACE_LANGUAGES = {"zh", "ja", "th", "my", "km", "lo", "bo"}
 
+
 class ServiceException(Exception):
     pass
 
@@ -86,15 +87,14 @@ class Service:
         """Split text into sentence-boundary chunks of at most max_words words.
 
         Uses a simple sentence-boundary regex that handles:
-        - Period / exclamation / question mark followed by whitespace or end-of-string
-        - Newlines (already collapsed to spaces by clean_text, so this is a safety net)
+        - Period / exclamation / question mark followed by whitespace
 
         For no-space languages the concept of "word" doesn't apply the same way,
         but the sentence-boundary split still works because those languages use
-        punctuation (。！？) as sentence terminators.
+        CJK sentence-ending punctuation (U+3002, U+FF01, U+FF1F) as terminators.
         """
         # Sentence-boundary split: keep the delimiter attached to the preceding sentence
-        sentences = re.split(r"(?<=[.!?。！？])\s+", text)
+        sentences = re.split(r"(?<=[.!?\u3002\uff01\uff1f])\s+", text)  # noqa: RUF001
 
         chunks: list[str] = []
         current_words: list[str] = []
@@ -161,11 +161,7 @@ class Service:
             min_repetition_penalty = chunking.get("min_repetition_penalty", 1.5)
             max_decoding_multiplier = chunking.get("max_decoding_multiplier", 3)
 
-            # Only chunk if the input exceeds the threshold
-            if len(cleaned.split()) > chunk_threshold:
-                chunks = self._chunk_text(cleaned, chunk_size)
-            else:
-                chunks = [cleaned]
+            chunks = self._chunk_text(cleaned, chunk_size) if len(cleaned.split()) > chunk_threshold else [cleaned]
 
             translated_chunks: list[str] = []
             for chunk in chunks:
