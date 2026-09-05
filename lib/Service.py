@@ -94,7 +94,7 @@ class Service:
         punctuation (。！？) as sentence terminators.
         """
         # Sentence-boundary split: keep the delimiter attached to the preceding sentence
-        sentences = re.split(r'(?<=[.!?。！？])\s+', text)
+        sentences = re.split(r"(?<=[.!?。！？])\s+", text)
 
         chunks: list[str] = []
         current_words: list[str] = []
