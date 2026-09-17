@@ -84,8 +84,10 @@ class Service:
             raise ServiceException("Error loading the translation model") from e
 
     def _chunk_text(self, text: str, max_words: int, source_language: str = "") -> list[str]:
-        """Split text into sentence-boundary chunks of at most max_words words (or characters
-        for no-space languages such as Chinese, Japanese, Thai, etc.).
+        """Split text into sentence-boundary chunks of at most max_words words.
+
+        For no-space languages (Chinese, Japanese, Thai, etc.) character count is used
+        instead of word count.
 
         Uses a simple sentence-boundary regex that handles:
         - Period / exclamation / question mark followed by whitespace (Latin scripts)
