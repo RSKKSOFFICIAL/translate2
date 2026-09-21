@@ -91,8 +91,8 @@ class Service:
 
         Uses a simple sentence-boundary regex that handles:
         - Period / exclamation / question mark followed by whitespace (Latin scripts)
-        - CJK sentence-ending punctuation (U+3002, U+FF01, U+FF1F) without requiring
-          trailing whitespace, since CJK sentences run together
+        - CJK (Chinese, Japanese and Korean-alike languages) sentence-ending punctuation (U+3002, U+FF01, U+FF1F) without requiring
+          trailing whitespace, since CJK sentences run together.
 
         For no-space languages split() always returns a single token regardless of
         length, so character count is used as the unit instead of word count.
