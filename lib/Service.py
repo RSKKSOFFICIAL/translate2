@@ -23,6 +23,28 @@ logger = logging.getLogger(os.environ["APP_ID"] + __name__)
 _NO_SPACE_LANGUAGES = {"zh", "yue", "ja", "th", "my", "km", "lo", "bo", "dz", "shn"}
 
 
+def _is_no_space_text(text: str) -> bool:
+    """Return True when the source text appears to use a no-space writing system.
+
+    Instead of relying on the origin_language tag (which may be "Detect Language"
+    or absent), we inspect the text itself. Languages like Chinese, Japanese, Thai,
+    Burmese, and Khmer have very few or no ASCII/Unicode space characters, giving a
+    space-to-total-character ratio close to zero. Space-delimited languages (English,
+    German, Arabic, Persian, Hindi, etc.) consistently produce a ratio above 10%.
+
+    A threshold of 5% is conservative enough to avoid false positives on short
+    punctuation-heavy snippets while correctly identifying dense scripts.
+
+    Empty or whitespace-only strings return False (they will produce an empty
+    translation regardless of counting method).
+    """
+    stripped = text.strip()
+    if not stripped:
+        return False
+    space_count = stripped.count(" ") + stripped.count("\t") + stripped.count("\n")
+    return (space_count / len(stripped)) < 0.05
+
+
 class ServiceException(Exception):
     pass
 
@@ -83,26 +105,28 @@ class Service:
         except Exception as e:
             raise ServiceException("Error loading the translation model") from e
 
-    def _chunk_text(self, text: str, max_words: int, source_language: str = "") -> list[str]:
-        """Split text into sentence-boundary chunks of at most max_words words.
+    def _chunk_text(self, text: str, max_words: int, is_no_space: bool = False) -> list[str]:
+        """Split text into sentence-boundary chunks of at most max_words words (or chars).
 
-        For no-space languages (Chinese, Japanese, Thai, etc.) character count is used
-        instead of word count.
+        Args:
+            text: The text to split.
+            max_words: Maximum words per chunk for space-delimited text, or maximum
+                characters per chunk for no-space writing systems.
+            is_no_space: Whether the source text uses a no-space writing system
+                (Chinese, Japanese, Thai, etc.). When True, character count is used
+                as the unit instead of word count. This should be derived from the
+                actual source text, not from a language code.
 
         Uses a simple sentence-boundary regex that handles:
         - Period / exclamation / question mark followed by whitespace (Latin scripts)
-        - CJK (Chinese, Japanese and Korean-alike languages) sentence-ending punctuation (U+3002, U+FF01, U+FF1F) without requiring
-          trailing whitespace, since CJK sentences run together.
+        - CJK (Chinese, Japanese and Korean-alike languages) sentence-ending
+          punctuation (U+3002, U+FF01, U+FF1F) without requiring trailing whitespace, since CJK 
+          sentences run together.
 
-        For no-space languages split() always returns a single token regardless of
-        length, so character count is used as the unit instead of word count.
         """
-        source_base = source_language.split("_")[0].lower() if source_language else ""
-        is_no_space = source_base in _NO_SPACE_LANGUAGES
-
         # Sentence-boundary split: keep the delimiter attached to the preceding sentence.
-        # For no-space languages (CJK etc.) use \s* because sentences run together without
-        # whitespace. For all other languages use \s+ to avoid splitting on abbreviations,
+        # For no-space text (CJK etc.) use \s* because sentences run together without
+        # whitespace. For all other text use \s+ to avoid splitting on abbreviations,
         # decimals, URLs, and other mid-word periods (e.g. "Dr.", "3.14", "U.S.A").
         if is_no_space:
             sentences = re.split(r"(?<=[。！？\u3002\uff01\uff1f])\s*", text)  # noqa: RUF001
@@ -177,22 +201,26 @@ class Service:
             chunking = self.config.get("chunking", {})
             chunk_threshold = chunking.get("chunk_threshold", 250)
             chunk_size = chunking.get("chunk_size", 80)
-            min_repetition_penalty = chunking.get("min_repetition_penalty", 1.5)
-            max_decoding_multiplier = chunking.get("max_decoding_multiplier", 3)
 
-            source_base = data.get("origin_language", "").split("_")[0].lower()
-            is_no_space_source = source_base in _NO_SPACE_LANGUAGES
+            # Detect whether the source text uses a no-space writing system (e.g. Chinese,
+            # Japanese, Thai) by examining the actual text rather than origin_language.
+            # origin_language may be "Detect Language" or otherwise unavailable, so it is
+            # not a reliable signal. A space ratio below 5% indicates a no-space script;
+            # for space-delimited languages (English, German, Arabic, etc.) the ratio is
+            # typically 15-20%.
+            is_no_space_source = _is_no_space_text(cleaned)
 
-            # For no-space languages (CJK, Thai, etc.) use character count as the unit;
-            # split() always returns 1 for these scripts regardless of actual length.
+            # For no-space text use character count as the threshold unit;
+            # for space-delimited text use word count.
             text_size = len(cleaned) if is_no_space_source else len(cleaned.split())
             chunks = (
-                self._chunk_text(cleaned, chunk_size, data.get("origin_language", ""))
+                self._chunk_text(cleaned, chunk_size, is_no_space=is_no_space_source)
                 if text_size > chunk_threshold
                 else [cleaned]
             )
 
-            # Encode all chunks up-front so we can submit them in a single batch.
+            # Tokenise every chunk prefixed with the target-language tag expected by
+            # the MADLAD-400 model (e.g. "<2de> ").
             all_input_tokens = [
                 self.tokenizer.Encode(
                     f"<2{data['target_language']}> {chunk}",
@@ -201,28 +229,20 @@ class Service:
                 for chunk in chunks
             ]
 
-            # Cap max_decoding_length using the longest chunk in the batch.
-            # This prevents runaway repetition loops (e.g. Hindi/Devanagari producing
-            # endless '=' characters) while still covering all chunks in one pass.
-            # The multiplier is configurable via chunking.max_decoding_multiplier
-            # (default 3). Languages that expand significantly (e.g. French ~1.3x,
-            # Devanagari ~1.5x) may need a higher value. Floor of 64 handles very
-            # short inputs.
-            max_input_tokens = max(len(t) for t in all_input_tokens)
-            batch_max_decoding = max(max_input_tokens * max_decoding_multiplier, 64)
-            inference_config = {
-                **self.config["inference"],
-                "max_decoding_length": batch_max_decoding,
-                "repetition_penalty": max(
-                    self.config["inference"].get("repetition_penalty", 1.0), min_repetition_penalty
-                ),
-            }
+            # translate_iterable streams all chunk token sequences through a single
+            # coordinated set of translate_batch calls, enabling asynchronous prefetching
+            # and (where inter_threads > 1) parallel translation. It preserves input
+            # order: results are yielded in the same order as the source iterable.
+            inference_config = {k: v for k, v in self.config["inference"].items()
+                                if k != "max_batch_size"}
+            max_batch_size = self.config["inference"].get("max_batch_size", 32)
 
-            results = self.translator.translate_batch(
+            results = list(self.translator.translate_iterable(
                 all_input_tokens,
+                max_batch_size=max_batch_size,
                 batch_type="tokens",
                 **inference_config,
-            )
+            ))
 
             if len(results) != len(chunks) or any(len(r.hypotheses) == 0 for r in results):
                 raise ServiceException("Empty result returned from translator")
