@@ -120,7 +120,7 @@ class Service:
         Uses a simple sentence-boundary regex that handles:
         - Period / exclamation / question mark followed by whitespace (Latin scripts)
         - CJK (Chinese, Japanese and Korean-alike languages) sentence-ending
-          punctuation (U+3002, U+FF01, U+FF1F) without requiring trailing whitespace, since CJK 
+          punctuation (U+3002, U+FF01, U+FF1F) without requiring trailing whitespace, since CJK
           sentences run together.
 
         """
