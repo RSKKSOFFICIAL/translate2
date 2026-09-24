@@ -26,8 +26,8 @@ _NO_SPACE_LANGUAGES = {"zh", "yue", "ja", "th", "my", "km", "lo", "bo", "dz", "s
 def _is_no_space_text(text: str) -> bool:
     """Return True when the source text appears to use a no-space writing system.
 
-    Instead of relying on the origin_language tag (which may be "Detect Language"
-    or absent), we inspect the text itself. Languages like Chinese, Japanese, Thai,
+    Instead of relying on the origin_language (which is always "detect_language"),
+    we inspect the text itself. Languages like Chinese, Japanese, Thai,
     Burmese, and Khmer have very few or no ASCII/Unicode space characters, giving a
     space-to-total-character ratio close to zero. Space-delimited languages (English,
     German, Arabic, Persian, Hindi, etc.) consistently produce a ratio above 10%.
