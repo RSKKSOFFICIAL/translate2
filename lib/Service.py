@@ -172,9 +172,6 @@ class Service:
     def _join_chunks(self, chunks: list[str], target_language: str) -> str:
         """Join translated chunks respecting language-specific rules.
 
-        - No-space languages (zh, ja, th, …): join with empty string.
-        - All other languages: join in forward order.
-
         Chunks are always kept in their original document order regardless of
         source/target writing direction. Each chunk is translated independently
         by the model, which already produces output in the correct reading order
