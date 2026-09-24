@@ -127,11 +127,11 @@ class Service:
         # Sentence-boundary split: keep the delimiter attached to the preceding sentence.
         # For no-space text (CJK etc.) use `\s*` because sentences run together without
         # whitespace. For all other text use `\s+`.
-        if is_no_space:
-            # split on special sentence boundaries and spaces if present
-            sentences = re.split(r"(?<=[\u3002\uff01\uff1f])\s*", text)
-        else:
-            sentences = re.split(r"(?<=[.!?])\s+", text)
+        sentences = (
+            re.split(r"(?<=[\u3002\uff01\uff1f])\s*", text)
+            if is_no_space
+            else re.split(r"(?<=[.!?])\s+", text)
+        )
 
         chunks: list[str] = []
         current_parts: list[str] = []
@@ -196,17 +196,22 @@ class Service:
             cleaned = clean_text(data["input"])
 
             chunking = self.config.get("chunking", {})
-            chunk_threshold = chunking.get("chunk_threshold", 250)
+            chunk_threshold = chunking.get("chunk_threshold", 256)
             chunk_size = chunking.get("chunk_size", 80)
 
             is_no_space_source = _is_no_space_text(cleaned)
 
-            # For no-space text use character count as the threshold unit;
-            # for space-delimited text use word count.
-            text_size = len(cleaned) if is_no_space_source else len(cleaned.split())
+            # Use the tokenizer to estimate the input size in tokens so the threshold
+            # is directly comparable to max_decoding_length (which is also in tokens).
+            # This is accurate for every language without needing per-script heuristics:
+            # a 250-word English text and a 250-character CJK text both produce a token
+            # count that reflects the model's actual input length.
+            # The target-language prefix is excluded from the count since it is short
+            # and constant — we are sizing the source content only.
+            input_token_count = len(self.tokenizer.Encode(cleaned, out_type=str))
             chunks = (
                 self._chunk_text(cleaned, chunk_size, is_no_space=is_no_space_source)
-                if text_size > chunk_threshold
+                if input_token_count > chunk_threshold
                 else [cleaned]
             )
 
@@ -224,13 +229,10 @@ class Service:
             # coordinated set of translate_batch calls, enabling asynchronous prefetching
             # and (where inter_threads > 1) parallel translation. It preserves input
             # order: results are yielded in the same order as the source iterable.
-            inference_config = {k: v for k, v in self.config["inference"].items()
-                                if k != "max_batch_size"}
-            max_batch_size = self.config["inference"].get("max_batch_size", 32)
+            inference_config = dict(self.config["inference"])
 
             results = list(self.translator.translate_iterable(
                 all_input_tokens,
-                max_batch_size=max_batch_size,
                 batch_type="tokens",
                 **inference_config,
             ))
