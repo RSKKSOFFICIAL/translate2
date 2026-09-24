@@ -199,12 +199,6 @@ class Service:
             chunk_threshold = chunking.get("chunk_threshold", 250)
             chunk_size = chunking.get("chunk_size", 80)
 
-            # Detect whether the source text uses a no-space writing system (e.g. Chinese,
-            # Japanese, Thai) by examining the actual text rather than origin_language.
-            # origin_language may be "Detect Language" or otherwise unavailable, so it is
-            # not a reliable signal. A space ratio below 5% indicates a no-space script;
-            # for space-delimited languages (English, German, Arabic, etc.) the ratio is
-            # typically 15-20%.
             is_no_space_source = _is_no_space_text(cleaned)
 
             # For no-space text use character count as the threshold unit;
