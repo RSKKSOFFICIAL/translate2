@@ -125,11 +125,11 @@ class Service:
 
         """
         # Sentence-boundary split: keep the delimiter attached to the preceding sentence.
-        # For no-space text (CJK etc.) use \s* because sentences run together without
-        # whitespace. For all other text use \s+ to avoid splitting on abbreviations,
-        # decimals, URLs, and other mid-word periods (e.g. "Dr.", "3.14", "U.S.A").
+        # For no-space text (CJK etc.) use `\s*` because sentences run together without
+        # whitespace. For all other text use `\s+`.
         if is_no_space:
-            sentences = re.split(r"(?<=[。！？\u3002\uff01\uff1f])\s*", text)  # noqa: RUF001
+            # split on special sentence boundaries and spaces if present
+            sentences = re.split(r"(?<=[\u3002\uff01\uff1f])\s*", text)
         else:
             sentences = re.split(r"(?<=[.!?])\s+", text)
 
