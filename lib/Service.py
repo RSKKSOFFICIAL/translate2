@@ -27,12 +27,9 @@ def _is_no_space_text(text: str) -> bool:
     """Return True when the source text appears to use a no-space writing system.
 
     Since the origin language is always "detect_language",
-    we inspect the text itself.A whitespace ratio below 5% is
+    we inspect the text itself. A whitespace ratio below 5% is
     treated as no-space text, which helps identify languages
     such as Chinese, Japanese, Thai, and few more.
-
-    Space-delimited languages (English, German, Arabic, Hindi, etc.)
-    consistently produce a ratio above 10%.
     """
     stripped = text.strip()
     if not stripped:
@@ -101,7 +98,7 @@ class Service:
         except Exception as e:
             raise ServiceException("Error loading the translation model") from e
 
-    def _chunk_text(self, text: str, max_words: int, is_no_space: bool = False) -> list[str]:
+    def _chunk_text(self, text: str, max_units: int, is_no_space: bool = False) -> list[str]:
         """Split text into sentence-boundary chunks of a maximum size.
 
         Space-delimited text is split by words, while no-space text is split by
@@ -128,19 +125,19 @@ class Service:
             if unit_count == 0:
                 continue
 
-            if current_count + unit_count > max_words and current_parts:
+            if current_count + unit_count > max_units and current_parts:
                 chunks.append(sep.join(current_parts))
                 current_parts = []
                 current_count = 0
 
-            if unit_count > max_words:
+            if unit_count > max_units:
                 if is_no_space:
-                    for i in range(0, len(sentence), max_words):
-                        chunks.append(sentence[i:i + max_words])
+                    for i in range(0, len(sentence), max_units):
+                        chunks.append(sentence[i:i + max_units])
                 else:
                     words = sentence.split()
-                    for i in range(0, len(words), max_words):
-                        chunks.append(" ".join(words[i:i + max_words]))
+                    for i in range(0, len(words), max_units):
+                        chunks.append(" ".join(words[i:i + max_units]))
                 continue
 
             current_parts.append(sentence)
