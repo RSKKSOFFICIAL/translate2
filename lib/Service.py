@@ -19,24 +19,20 @@ from util import clean_text
 
 logger = logging.getLogger(os.environ["APP_ID"] + __name__)
 
-# Languages that do not use spaces between words — join chunks without a space separator
+# Languages that do not use spaces between words
 _NO_SPACE_LANGUAGES = {"zh", "yue", "ja", "th", "my", "km", "lo", "bo", "dz", "shn"}
 
 
 def _is_no_space_text(text: str) -> bool:
     """Return True when the source text appears to use a no-space writing system.
 
-    Instead of relying on the origin_language (which is always "detect_language"),
-    we inspect the text itself. Languages like Chinese, Japanese, Thai,
-    Burmese, and Khmer have very few or no ASCII/Unicode space characters, giving a
-    space-to-total-character ratio close to zero. Space-delimited languages (English,
-    German, Arabic, Persian, Hindi, etc.) consistently produce a ratio above 10%.
-
-    A threshold of 5% is conservative enough to avoid false positives on short
-    punctuation-heavy snippets while correctly identifying dense scripts.
-
-    Empty or whitespace-only strings return False (they will produce an empty
-    translation regardless of counting method).
+    Since the origin language is always "detect_language",
+    we inspect the text itself.A whitespace ratio below 5% is 
+    treated as no-space text, which helps identify languages
+    such as Chinese, Japanese, Thai, and few more.
+    
+    Space-delimited languages (English,German, Arabic, Hindi, etc.)
+    consistently produce a ratio above 10%.
     """
     stripped = text.strip()
     if not stripped:
@@ -106,25 +102,15 @@ class Service:
             raise ServiceException("Error loading the translation model") from e
 
     def _chunk_text(self, text: str, max_words: int, is_no_space: bool = False) -> list[str]:
-        """Split text into sentence-boundary chunks of at most max_words words (or chars).
+        """Split text into sentence-boundary chunks of a maximum size.
 
-        Args:
-            text: The text to split.
-            max_words: Maximum words per chunk for space-delimited text, or maximum
-                characters per chunk for no-space writing systems.
-            is_no_space: Whether the source text uses a no-space writing system
-                (Chinese, Japanese, Thai, etc.). When True, character count is used
-                as the unit instead of word count. This should be derived from the
-                actual source text, not from a language code.
 
-        Uses a simple sentence-boundary regex that handles:
-        - Period / exclamation / question mark followed by whitespace (Latin scripts)
-        - CJK (Chinese, Japanese and Korean-alike languages) sentence-ending
-          punctuation (U+3002, U+FF01, U+FF1F) without requiring trailing whitespace, since CJK
-          sentences run together.
-
+        Space-delimited text is split by words, while no-space text is split by
+        characters. Sentence boundaries are preserved where possible, using
+        standard punctuation for space-delimited text and 
+        CJK (Chinese, Japanese and Korean-alike languages) punctuation for no-space text.
         """
-        # Sentence-boundary split: keep the delimiter attached to the preceding sentence.
+        # Keep sentence punctuation attached to the preceding sentence.
         # For no-space text (CJK etc.) use `\s*` because sentences run together without
         # whitespace. For all other text use `\s+`.
         sentences = (
@@ -139,18 +125,15 @@ class Service:
         sep = "" if is_no_space else " "
 
         for sentence in sentences:
-            # Count characters for no-space languages, words for everything else
             unit_count = len(sentence) if is_no_space else len(sentence.split())
             if unit_count == 0:
                 continue
 
-            # If adding this sentence would overflow the chunk, flush first
             if current_count + unit_count > max_words and current_parts:
                 chunks.append(sep.join(current_parts))
                 current_parts = []
                 current_count = 0
 
-            # If a single sentence is longer than max_words on its own, hard-split it
             if unit_count > max_words:
                 if is_no_space:
                     for i in range(0, len(sentence), max_words):
@@ -172,13 +155,10 @@ class Service:
     def _join_chunks(self, chunks: list[str], target_language: str) -> str:
         """Join translated chunks respecting language-specific rules.
 
-        Chunks are always kept in their original document order regardless of
-        source/target writing direction. Each chunk is translated independently
-        by the model, which already produces output in the correct reading order
-        for the target language. Reversing the chunk list would scramble the
-        logical sequence of the document.
+        No-space languages are joined without a separator, while other languages
+        use a space. The translated chunks are already in the correct reading
+        order, so their order should not be reversed.
         """
-        # Strip leading/trailing whitespace from each chunk before joining
         chunks = [c.strip() for c in chunks if c.strip()]
         if not chunks:
             return ""
@@ -194,20 +174,10 @@ class Service:
         try:
             start = perf_counter()
             cleaned = clean_text(data["input"])
-
             chunking = self.config.get("chunking", {})
             chunk_threshold = chunking.get("chunk_threshold", 256)
             chunk_size = chunking.get("chunk_size", 80)
-
             is_no_space_source = _is_no_space_text(cleaned)
-
-            # Use the tokenizer to estimate the input size in tokens so the threshold
-            # is directly comparable to max_decoding_length (which is also in tokens).
-            # This is accurate for every language without needing per-script heuristics:
-            # a 250-word English text and a 250-character CJK text both produce a token
-            # count that reflects the model's actual input length.
-            # The target-language prefix is excluded from the count since it is short
-            # and constant — we are sizing the source content only.
             input_token_count = len(self.tokenizer.Encode(cleaned, out_type=str))
             chunks = (
                 self._chunk_text(cleaned, chunk_size, is_no_space=is_no_space_source)
@@ -215,8 +185,6 @@ class Service:
                 else [cleaned]
             )
 
-            # Tokenise every chunk prefixed with the target-language tag expected by
-            # the MADLAD-400 model (e.g. "<2de> ").
             all_input_tokens = [
                 self.tokenizer.Encode(
                     f"<2{data['target_language']}> {chunk}",
@@ -225,10 +193,6 @@ class Service:
                 for chunk in chunks
             ]
 
-            # translate_iterable streams all chunk token sequences through a single
-            # coordinated set of translate_batch calls, enabling asynchronous prefetching
-            # and (where inter_threads > 1) parallel translation. It preserves input
-            # order: results are yielded in the same order as the source iterable.
             inference_config = dict(self.config["inference"])
 
             results = list(self.translator.translate_iterable(
