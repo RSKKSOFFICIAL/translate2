@@ -31,7 +31,7 @@ def _is_no_space_text(text: str) -> bool:
     treated as no-space text, which helps identify languages
     such as Chinese, Japanese, Thai, and few more.
     
-    Space-delimited languages (English,German, Arabic, Hindi, etc.)
+    Space-delimited languages (English, German, Arabic, Hindi, etc.)
     consistently produce a ratio above 10%.
     """
     stripped = text.strip()
@@ -104,11 +104,10 @@ class Service:
     def _chunk_text(self, text: str, max_words: int, is_no_space: bool = False) -> list[str]:
         """Split text into sentence-boundary chunks of a maximum size.
 
-
         Space-delimited text is split by words, while no-space text is split by
         characters. Sentence boundaries are preserved where possible, using
         standard punctuation for space-delimited text and 
-        CJK (Chinese, Japanese and Korean-alike languages) punctuation for no-space text.
+        CJK (Chinese, Japanese, and Korean-alike languages) punctuation for no-space text.
         """
         # Keep sentence punctuation attached to the preceding sentence.
         # For no-space text (CJK etc.) use `\s*` because sentences run together without
