@@ -27,10 +27,10 @@ def _is_no_space_text(text: str) -> bool:
     """Return True when the source text appears to use a no-space writing system.
 
     Since the origin language is always "detect_language",
-    we inspect the text itself.A whitespace ratio below 5% is 
+    we inspect the text itself.A whitespace ratio below 5% is
     treated as no-space text, which helps identify languages
     such as Chinese, Japanese, Thai, and few more.
-    
+
     Space-delimited languages (English, German, Arabic, Hindi, etc.)
     consistently produce a ratio above 10%.
     """
@@ -106,7 +106,7 @@ class Service:
 
         Space-delimited text is split by words, while no-space text is split by
         characters. Sentence boundaries are preserved where possible, using
-        standard punctuation for space-delimited text and 
+        standard punctuation for space-delimited text and
         CJK (Chinese, Japanese, and Korean-alike languages) punctuation for no-space text.
         """
         # Keep sentence punctuation attached to the preceding sentence.
